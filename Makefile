@@ -1,40 +1,33 @@
-# Makefile - automatic src/*.c -> obj/*.o build for ls project
 
-CC := gcc
-CFLAGS := -Wall -Wextra -g
+# Makefile for ls utility project
+# Makefile for lsv1.1.0
+# Directories
+SRC_DIR = src
+OBJ_DIR = obj
+BIN_DIR = bin
 
-SRC_DIR := src
-OBJ_DIR := obj
-BIN_DIR := bin
+# Files
+SRC = $(SRC_DIR)/lsv1.1.0.c
+OBJ = $(OBJ_DIR)/lsv1.1.0.o
+BIN = $(BIN_DIR)/ls
 
-# find all .c sources in src/
-SRCS := $(wildcard $(SRC_DIR)/*.c)
+# Compiler
+CC = gcc
+CFLAGS = -Wall -g
 
-# map src/foo.c -> obj/foo.o  (works even if filenames contain dots)
-OBJS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRCS))
+# Default Target
+all: $(BIN)
 
-# output binary name
-TARGET := $(BIN_DIR)/ls
-
-.PHONY: all clean run
-
-all: $(TARGET)
-
-# link
-$(TARGET): $(OBJS)
+$(BIN): $(OBJ)
 	@mkdir -p $(BIN_DIR)
-	$(CC) $(CFLAGS) -o $@ $(OBJS)
+	$(CC) $(CFLAGS) $(OBJ) -o $(BIN)
 
-# compile rule for any obj from src
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
+$(OBJ): $(SRC)
 	@mkdir -p $(OBJ_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c $(SRC) -o $(OBJ)
 
 clean:
-	-rm -rf $(OBJ_DIR)/*.o $(TARGET)
+	rm -rf $(OBJ_DIR) $(BIN_DIR)
 
-# convenience: run binary (without args)
-run: $(TARGET)
-	./$(TARGET)
-
+.PHONY: all clean
 
