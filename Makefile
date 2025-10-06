@@ -7,8 +7,8 @@ OBJ_DIR = obj
 BIN_DIR = bin
 
 # Files
-SRC = $(SRC_DIR)/lsv1.1.0.c
-OBJ = $(OBJ_DIR)/lsv1.1.0.o
+SRC = $(SRC_DIR)/lsv1.0.0.c
+OBJ = $(OBJ_DIR)/lsv1.0.0.o
 BIN = $(BIN_DIR)/ls
 
 # Compiler
