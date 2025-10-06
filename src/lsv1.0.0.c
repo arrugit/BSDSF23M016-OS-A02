@@ -3,179 +3,186 @@
 #include <string.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <time.h>
 #include <pwd.h>
 #include <grp.h>
-#include <time.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
+#include <sys/ioctl.h>  
 
-#define MAX_FILES 1024
+// ANSI color codes
+#define RESET       "\033[0m"
+#define BLUE        "\033[0;34m"
+#define GREEN       "\033[0;32m"
+#define RED         "\033[0;31m"
+#define PINK        "\033[0;35m"
+#define REVERSE     "\033[7m"
 
-// ---------------- Permissions Printer ----------------
+// display modes
+#define DEFAULT_MODE 0
+#define LONG_MODE    1
+#define HORIZONTAL_MODE 2
+
+// function to print permissions
 void print_permissions(mode_t mode) {
-    char perms[11] = "----------";
+    printf( (S_ISDIR(mode)) ? "d" :
+            (S_ISLNK(mode)) ? "l" :
+            (S_ISCHR(mode)) ? "c" :
+            (S_ISBLK(mode)) ? "b" :
+            (S_ISSOCK(mode))? "s" :
+            (S_ISFIFO(mode))? "p" : "-");
 
-    if (S_ISDIR(mode)) perms[0] = 'd';
-    else if (S_ISLNK(mode)) perms[0] = 'l';
-    else if (S_ISCHR(mode)) perms[0] = 'c';
-    else if (S_ISBLK(mode)) perms[0] = 'b';
-    else if (S_ISFIFO(mode)) perms[0] = 'p';
-    else if (S_ISSOCK(mode)) perms[0] = 's';
-
-    if (mode & S_IRUSR) perms[1] = 'r';
-    if (mode & S_IWUSR) perms[2] = 'w';
-    if (mode & S_IXUSR) perms[3] = 'x';
-    if (mode & S_IRGRP) perms[4] = 'r';
-    if (mode & S_IWGRP) perms[5] = 'w';
-    if (mode & S_IXGRP) perms[6] = 'x';
-    if (mode & S_IROTH) perms[7] = 'r';
-    if (mode & S_IWOTH) perms[8] = 'w';
-    if (mode & S_IXOTH) perms[9] = 'x';
-
-    printf("%s", perms);
+    printf( (mode & S_IRUSR) ? "r" : "-");
+    printf( (mode & S_IWUSR) ? "w" : "-");
+    printf( (mode & S_IXUSR) ? "x" : "-");
+    printf( (mode & S_IRGRP) ? "r" : "-");
+    printf( (mode & S_IWGRP) ? "w" : "-");
+    printf( (mode & S_IXGRP) ? "x" : "-");
+    printf( (mode & S_IROTH) ? "r" : "-");
+    printf( (mode & S_IWOTH) ? "w" : "-");
+    printf( (mode & S_IXOTH) ? "x" : "-");
 }
 
-// ---------------- Sorting Helper for qsort ----------------
-int cmp_names(const void *a, const void *b) {
-    const char *na = *(const char **)a;
-    const char *nb = *(const char **)b;
-    return strcmp(na, nb);
+// color printing based on file type
+void print_colored_name(const char *name, const char *path) {
+    struct stat st;
+    char fullpath[1024];
+    snprintf(fullpath, sizeof(fullpath), "%s/%s", path, name);
+    lstat(fullpath, &st);
+
+    const char *color = RESET;
+
+    if (S_ISDIR(st.st_mode))
+        color = BLUE;
+    else if (S_ISLNK(st.st_mode))
+        color = PINK;
+    else if (S_ISCHR(st.st_mode) || S_ISBLK(st.st_mode) || S_ISSOCK(st.st_mode))
+        color = REVERSE;
+    else if (st.st_mode & S_IXUSR)
+        color = GREEN;
+    else if (strstr(name, ".tar") || strstr(name, ".gz") || strstr(name, ".zip"))
+        color = RED;
+
+    printf("%s%s%s", color, name, RESET);
 }
 
-// ---------------- Read and Sort Filenames ----------------
-int read_directory(const char *path, char ***names_out) {
+// comparison function for qsort (ASCII-based)
+int compare_names(const void *a, const void *b) {
+    const char *fa = *(const char **)a;
+    const char *fb = *(const char **)b;
+    return strcmp(fa, fb);  // case-sensitive ASCII order
+}
+
+// read directory and return filenames
+char **read_dir(const char *path, int *count) {
     DIR *dir = opendir(path);
     if (!dir) {
         perror("opendir");
-        return 0;
+        exit(1);
     }
 
     struct dirent *entry;
-    char **names = malloc(MAX_FILES * sizeof(char *));
-    int count = 0;
+    char **names = NULL;
+    *count = 0;
 
-    while ((entry = readdir(dir)) != NULL && count < MAX_FILES) {
+    while ((entry = readdir(dir)) != NULL) {
         if (entry->d_name[0] == '.') continue; // skip hidden
-        names[count++] = strdup(entry->d_name);
+        names = realloc(names, sizeof(char*) * (*count + 1));
+        names[*count] = strdup(entry->d_name);
+        (*count)++;
     }
+
     closedir(dir);
 
-    qsort(names, count, sizeof(char *), cmp_names); // alphabetical sort
-    *names_out = names;
-    return count;
+    qsort(names, *count, sizeof(char*), compare_names); // sort alphabetically (ASCII)
+    return names;
 }
 
-// ---------------- Long Listing ----------------
-void print_long(const char *path, char **names, int count) {
-    struct stat st;
-    long total = 0;
-    char fullpath[1024];
-
-    // calculate total
+// display in columns (vertical)
+void display_default(char **names, int count, const char *path) {
     for (int i = 0; i < count; i++) {
-        snprintf(fullpath, sizeof(fullpath), "%s/%s", path, names[i]);
-        if (lstat(fullpath, &st) == 0)
-            total += st.st_blocks;
-    }
-    printf("total %ld\n", total / 2);
-
-    for (int i = 0; i < count; i++) {
-        snprintf(fullpath, sizeof(fullpath), "%s/%s", path, names[i]);
-        if (lstat(fullpath, &st) < 0) continue;
-
-        print_permissions(st.st_mode);
-        printf(" %2ld", (long)st.st_nlink);
-
-        struct passwd *pw = getpwuid(st.st_uid);
-        struct group *gr = getgrgid(st.st_gid);
-        printf(" %-8s %-8s", pw ? pw->pw_name : "?", gr ? gr->gr_name : "?");
-
-        printf(" %8ld", (long)st.st_size);
-
-        char timebuf[64];
-        strftime(timebuf, sizeof(timebuf), "%b %d %H:%M", localtime(&st.st_mtime));
-        printf(" %s %s\n", timebuf, names[i]);
-    }
-}
-
-// ---------------- Default Down-Then-Across Display ----------------
-void print_down_across(char **names, int count) {
-    struct winsize ws;
-    ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
-    int width = ws.ws_col ? ws.ws_col : 80;
-
-    int maxlen = 0;
-    for (int i = 0; i < count; i++) {
-        int len = strlen(names[i]);
-        if (len > maxlen) maxlen = len;
-    }
-    int spacing = 2;
-    int cols = width / (maxlen + spacing);
-    if (cols < 1) cols = 1;
-    int rows = (count + cols - 1) / cols;
-
-    for (int r = 0; r < rows; r++) {
-        for (int c = 0; c < cols; c++) {
-            int idx = c * rows + r;
-            if (idx < count)
-                printf("%-*s", maxlen + spacing, names[idx]);
-        }
+        print_colored_name(names[i], path);
         printf("\n");
     }
 }
 
-// ---------------- Horizontal Display (-x) ----------------
-void print_horizontal(char **names, int count) {
-    struct winsize ws;
-    ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
-    int width = ws.ws_col ? ws.ws_col : 80;
+// display horizontally (-x)
+void display_horizontal(char **names, int count, const char *path) {
+    struct winsize w;
+    int term_width = 80;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0)
+        term_width = w.ws_col;
 
     int maxlen = 0;
     for (int i = 0; i < count; i++) {
         int len = strlen(names[i]);
         if (len > maxlen) maxlen = len;
     }
-    int spacing = 2;
-    int colwidth = maxlen + spacing;
-    int curr = 0;
+
+    int cols = term_width / (maxlen + 2);
+    if (cols < 1) cols = 1;
 
     for (int i = 0; i < count; i++) {
-        int next = curr + colwidth;
-        if (next > width) {
-            printf("\n");
-            curr = 0;
-        }
-        printf("%-*s", colwidth, names[i]);
-        curr += colwidth;
+        print_colored_name(names[i], path);
+        int len = strlen(names[i]);
+        int padding = maxlen - len + 2;
+        for (int j = 0; j < padding; j++) printf(" ");
+        if ((i + 1) % cols == 0) printf("\n");
     }
     printf("\n");
 }
 
-// ---------------- Main ----------------
+// display long listing (-l)
+void display_long(char **names, int count, const char *path) {
+    struct stat st;
+    for (int i = 0; i < count; i++) {
+        char fullpath[1024];
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", path, names[i]);
+        if (lstat(fullpath, &st) == -1) continue;
+
+        print_permissions(st.st_mode);
+        printf(" %2ld", st.st_nlink);
+
+        struct passwd *pw = getpwuid(st.st_uid);
+        struct group *gr = getgrgid(st.st_gid);
+        printf(" %-8s %-8s %8ld ", 
+            pw ? pw->pw_name : "?", 
+            gr ? gr->gr_name : "?", 
+            st.st_size);
+
+        char timebuf[64];
+        strftime(timebuf, sizeof(timebuf), "%b %d %H:%M", localtime(&st.st_mtime));
+        printf("%s ", timebuf);
+
+        print_colored_name(names[i], path);
+        printf("\n");
+    }
+}
+
 int main(int argc, char *argv[]) {
-    int opt_long = 0, opt_horizontal = 0;
+    int opt;
+    int mode = DEFAULT_MODE;
     const char *path = ".";
 
-    // Argument parsing
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-l") == 0)
-            opt_long = 1;
-        else if (strcmp(argv[i], "-x") == 0)
-            opt_horizontal = 1;
-        else
-            path = argv[i];
+    while ((opt = getopt(argc, argv, "lx")) != -1) {
+        switch (opt) {
+            case 'l': mode = LONG_MODE; break;
+            case 'x': mode = HORIZONTAL_MODE; break;
+            default:  fprintf(stderr, "Usage: %s [-l | -x] [dir]\n", argv[0]); exit(1);
+        }
     }
 
-    char **names;
-    int count = read_directory(path, &names);
-    if (count == 0) return 0;
+    if (optind < argc) path = argv[optind];
 
-    if (opt_long)
-        print_long(path, names, count);
-    else if (opt_horizontal)
-        print_horizontal(names, count);
+    int count;
+    char **names = read_dir(path, &count);
+
+    if (mode == LONG_MODE)
+        display_long(names, count, path);
+    else if (mode == HORIZONTAL_MODE)
+        display_horizontal(names, count, path);
     else
-        print_down_across(names, count);
+        display_default(names, count, path);
 
     for (int i = 0; i < count; i++)
         free(names[i]);
