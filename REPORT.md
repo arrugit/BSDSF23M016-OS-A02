@@ -34,3 +34,5 @@ if ((st_mode & S_IFMT) == S_IFDIR)
 if ((st_mode & S_IFMT) == S_IFREG)
     printf("This is a regular file.\n");
 
+##Feature-3: ls-v1.2.0 – Column Display (Down Then Across)
+
