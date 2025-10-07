@@ -1,6 +1,6 @@
 # REPORT.md
 
-## Feature 2: ls-v1.1.0 – Complete Long Listing Format
+## Feature-3: ls-v1.2.0 – Column Display (Down Then Across)
 
 ### Question 1  
 **Explain the general logic for printing items in a "down then across" columnar format. Why is a simple single loop through the list of filenames insufficient for this task?**
