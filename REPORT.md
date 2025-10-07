@@ -1,36 +1,31 @@
 # REPORT.md
-## Feature-2: ls-v1.1.0 – Complete Long Listing Format
+## Feature-7: ls-v1.6.0 – Recursive Listing (-R Option)
 
 ### Report Questions and Answers
 
 ---
 
-### **Q1. What is the crucial difference between `stat()` and `lstat()`? In the context of the `ls` command, when is it more appropriate to use `lstat()`?**
+### **Q1. In a recursive function, what is a "base case"? In the context of your recursive ls, what is the base case that stops the recursion from continuing forever?**
 
 **Answer:**
-The main difference between `stat()` and `lstat()` is how they handle symbolic links.
+A base case is the condition that stops recursion.
+For ls -R, the base case is when:
 
-- **`stat()`** follows a symbolic link and returns information about the **target file** that the link points to.  
-- **`lstat()`** does **not** follow the symbolic link. Instead, it returns information about the **link itself** (for example, its permissions, owner, and where it points).
+Entry is not a directory, or
 
-In the context of the `ls` command, it is more appropriate to use **`lstat()`** because when we list files with the `-l` option, we need to show symbolic links as links — displaying both their metadata and their target (e.g., `linkname -> targetfile`).  
-If we used `stat()`, the program would show information about the target file instead of the link itself, which would be incorrect for `ls -l`.
+Entry is "." or ".." (to avoid looping).
 
 ---
 
-### **Q2. The `st_mode` field in `struct stat` is an integer that contains both the file type (e.g., regular file, directory) and the permission bits. Explain how you can use bitwise operators (like `&`) and predefined macros (like `S_IFDIR` or `S_IRUSR`) to extract this information.**
+### **Explain why it is essential to construct a full path (e.g., "parent_dir/subdir") before making a recursive call. What would happen if you simply called do_ls("subdir") from within the do_ls("parent_dir") function call?**
 
 **Answer:**
-The `st_mode` field uses **bit flags** to store information about both the **file type** and the **permissions**.  
-We can use **bitwise AND (`&`)** with predefined macros to test which bits are set.
+Full paths are required because opendir() and stat() need the correct location.
 
-#### 1. Extracting File Type
-The upper bits of `st_mode` represent the file type.  
-You can check them using the mask `S_IFMT` together with macros like:
-```c
-if ((st_mode & S_IFMT) == S_IFDIR)
-    printf("This is a directory.\n");
+If only "subdir" is passed:
 
-if ((st_mode & S_IFMT) == S_IFREG)
-    printf("This is a regular file.\n");
+Program looks in the wrong working directory.
 
+Leads to missing or incorrect results.
+
+By using "parent_dir/subdir", recursion properly descends into nested directories.
